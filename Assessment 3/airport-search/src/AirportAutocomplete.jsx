@@ -1,172 +1,124 @@
-
-
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAirportLookup } from './useAirportLookup.js';
 
 const DEBOUNCE_MS = 250;
 
 export default function AirportAutocomplete() {
-  // ── Lookup hook (data layer) ──────────────────────
   const { isLoading, error, searchAirports } = useAirportLookup();
 
-  // ── Component state ───────────────────────────────
   const [inputValue, setInputValue] = useState('');
   const [results, setResults] = useState([]);
   const [isOpen, setIsOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
-  const [selectedAirport, setSelectedAirport] = useState(null);
+  const [selected, setSelected] = useState(null);
 
-  // ── Refs ──────────────────────────────────────────
-  const debounceRef = useRef(null);
+  const timerRef = useRef(null);
   const listRef = useRef(null);
-  const containerRef = useRef(null);
+  const wrapperRef = useRef(null);
 
-  // ── Debounced search ──────────────────────────────
+  // debounced search whenever input changes
   useEffect(() => {
-    // Clear any pending debounce timer
-    clearTimeout(debounceRef.current);
+    clearTimeout(timerRef.current);
 
-    const trimmed = inputValue.trim();
-
-    if (trimmed === '') {
+    if (!inputValue.trim()) {
       setResults([]);
       setIsOpen(false);
       setActiveIndex(-1);
       return;
     }
 
-    debounceRef.current = setTimeout(() => {
-      const matches = searchAirports(trimmed);
+    timerRef.current = setTimeout(() => {
+      const matches = searchAirports(inputValue);
       setResults(matches);
       setIsOpen(true);
       setActiveIndex(-1);
     }, DEBOUNCE_MS);
 
-    // Cleanup on unmount or before next effect
-    return () => clearTimeout(debounceRef.current);
+    return () => clearTimeout(timerRef.current);
   }, [inputValue, searchAirports]);
 
-  // ── Close dropdown on outside click ───────────────
+  // close dropdown if user clicks outside
   useEffect(() => {
-    function handleClickOutside(e) {
-      if (containerRef.current && !containerRef.current.contains(e.target)) {
+    function handleClick(e) {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target)) {
         setIsOpen(false);
-        setActiveIndex(-1);
       }
     }
-
-    document.addEventListener('click', handleClickOutside);
-    return () => document.removeEventListener('click', handleClickOutside);
+    document.addEventListener('click', handleClick);
+    return () => document.removeEventListener('click', handleClick);
   }, []);
 
-  // ── Scroll active item into view ──────────────────
+  // keep active item scrolled into view
   useEffect(() => {
-    if (activeIndex >= 0 && listRef.current) {
-      const items = listRef.current.querySelectorAll('li:not(.no-match)');
-      if (items[activeIndex]) {
-        items[activeIndex].scrollIntoView({ block: 'nearest' });
-      }
+    if (activeIndex < 0 || !listRef.current) return;
+    const items = listRef.current.children;
+    if (items[activeIndex]) {
+      items[activeIndex].scrollIntoView({ block: 'nearest' });
     }
   }, [activeIndex]);
 
-  // ── Selection handler ─────────────────────────────
-  const selectAirport = useCallback((airport) => {
+  const handleSelect = useCallback((airport) => {
     setInputValue(airport.code);
-    setSelectedAirport(airport);
+    setSelected(airport);
     setIsOpen(false);
     setActiveIndex(-1);
   }, []);
 
-  // ── Keyboard handler ──────────────────────────────
   function handleKeyDown(e) {
-    if (!isOpen) return;
+    if (!isOpen || results.length === 0) return;
 
-    const matchCount = results.length;
-
-    switch (e.key) {
-      case 'ArrowDown':
-        e.preventDefault();
-        if (matchCount === 0) return;
-        setActiveIndex((prev) => (prev < matchCount - 1 ? prev + 1 : 0));
-        break;
-
-      case 'ArrowUp':
-        e.preventDefault();
-        if (matchCount === 0) return;
-        setActiveIndex((prev) => (prev > 0 ? prev - 1 : matchCount - 1));
-        break;
-
-      case 'Enter':
-        e.preventDefault();
-        if (activeIndex >= 0 && activeIndex < matchCount) {
-          selectAirport(results[activeIndex]);
-        }
-        break;
-
-      case 'Escape':
-        e.preventDefault();
-        setIsOpen(false);
-        setActiveIndex(-1);
-        break;
-
-      default:
-        break;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setActiveIndex((i) => (i < results.length - 1 ? i + 1 : 0));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setActiveIndex((i) => (i > 0 ? i - 1 : results.length - 1));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (activeIndex >= 0) handleSelect(results[activeIndex]);
+    } else if (e.key === 'Escape') {
+      setIsOpen(false);
+      setActiveIndex(-1);
     }
   }
 
-  // ── Input change handler ──────────────────────────
-  function handleInputChange(e) {
+  function handleChange(e) {
     setInputValue(e.target.value);
-    // Clear selection when user starts typing again
-    setSelectedAirport(null);
+    setSelected(null);
   }
 
-  // ── Render ────────────────────────────────────────
-  if (error) {
-    return <p style={{ color: 'red' }}>Error: {error}</p>;
-  }
+  if (error) return <p style={{ color: 'red' }}>Error: {error}</p>;
 
   return (
     <>
-      <div className="autocomplete" ref={containerRef}>
+      <div className="autocomplete" ref={wrapperRef}>
         <label htmlFor="airport-input">From</label>
         <input
           type="text"
           id="airport-input"
-          placeholder={isLoading ? 'Loading airports…' : 'Type IATA code or city name…'}
+          placeholder={isLoading ? 'Loading…' : 'Type IATA code or city…'}
           autoComplete="off"
           role="combobox"
           aria-expanded={isOpen}
           aria-controls="dropdown-list"
-          aria-autocomplete="list"
-          aria-activedescendant={activeIndex >= 0 ? `option-${activeIndex}` : undefined}
           value={inputValue}
-          onChange={handleInputChange}
+          onChange={handleChange}
           onKeyDown={handleKeyDown}
           disabled={isLoading}
         />
 
         {isOpen && (
-          <ul
-            id="dropdown-list"
-            className="dropdown"
-            role="listbox"
-            ref={listRef}
-          >
+          <ul id="dropdown-list" className="dropdown" role="listbox" ref={listRef}>
             {results.length === 0 ? (
-              <li className="no-match" role="option">
-                No airports match
-              </li>
+              <li className="no-match">No airports match</li>
             ) : (
-              results.map((airport, index) => (
+              results.map((airport, i) => (
                 <li
                   key={airport.code}
-                  id={`option-${index}`}
                   role="option"
-                  aria-selected={index === activeIndex}
-                  className={index === activeIndex ? 'active' : ''}
-                  onClick={() => selectAirport(airport)}
-                  onMouseEnter={() => setActiveIndex(index)}
+                  className={i === activeIndex ? 'active' : ''}
+                  onClick={() => handleSelect(airport)}
+                  onMouseEnter={() => setActiveIndex(i)}
                   onMouseLeave={() => setActiveIndex(-1)}
                 >
                   <span className="code">{airport.code}</span>
@@ -179,9 +131,9 @@ export default function AirportAutocomplete() {
         )}
       </div>
 
-      {selectedAirport && (
+      {selected && (
         <pre className="selected-output">
-          {JSON.stringify(selectedAirport, null, 2)}
+          {JSON.stringify(selected, null, 2)}
         </pre>
       )}
     </>

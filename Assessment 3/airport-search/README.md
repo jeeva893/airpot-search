@@ -1,68 +1,49 @@
-# Airport Search with Autocomplete
+# Airport Search — Autocomplete
 
 ## Stack
 
-**React 18+** (functional components, hooks) with Vite as the dev server / bundler.
+React (with Vite). I went with React since that's what I use day-to-day and I'm fastest with hooks and functional components. Vite gives a zero-config dev server so there's no setup friction.
 
-I chose React because I am most comfortable with its component model and hooks API. Functional components with `useState` and `useEffect` keep the logic straightforward, and a custom hook cleanly separates the data-fetching / search logic from the UI component.
-
----
-
-## How to Run
+## How to run
 
 ```bash
-# 1. Install dependencies
 npm install
-
-# 2. Start the dev server
 npm run dev
 ```
 
-Open the URL shown in the terminal (usually `http://localhost:5173`).
+Opens at `http://localhost:5173`.
 
----
-
-## Project Structure
+## Structure
 
 ```
-airport-search/
-├── public/
-│   └── airports.json              ← 34 Indian airports (loaded at runtime via fetch)
-├── src/
-│   ├── main.jsx                   ← React entry point
-│   ├── App.jsx                    ← Root component
-│   ├── AirportAutocomplete.jsx    ← Input + dropdown UI component
-│   ├── useAirportLookup.js        ← Custom hook: fetches data, exposes searchAirports()
-│   └── index.css                  ← All styling (plain CSS, no libraries)
-├── index.html
-├── package.json
-├── vite.config.js
-└── README.md
+src/
+  App.jsx                    – root, just renders the autocomplete
+  AirportAutocomplete.jsx    – the input + dropdown component
+  useAirportLookup.js        – custom hook that fetches airports.json and has the search logic
+  index.css                  – styles
+public/
+  airports.json              – the 34 airports (fetched at runtime, not imported)
 ```
 
-The **lookup logic** (fetching airports.json, filtering by search term) lives entirely in `useAirportLookup.js` — a custom hook with zero JSX or DOM code. The **UI component** `AirportAutocomplete.jsx` imports only the hook and handles rendering, keyboard events, and selection.
+I kept the search/filter logic in a custom hook (`useAirportLookup`) so the component only deals with rendering and user interaction. The hook fetches the JSON once on mount and exposes a `searchAirports(term)` function that the component calls.
 
----
+## Questions
 
-## Design Questions
+**How does your autocomplete avoid filtering on every keystroke, and why does that matter?**
 
-### 1. How does your autocomplete avoid filtering on every keystroke, and why does that matter?
+I use a debounce — whenever the input value changes, I set a 250ms timeout before actually running the search. If the user types another character before the timeout fires, the old one gets cleared and a new one starts. So the search only runs once typing pauses. This avoids doing unnecessary work on half-typed words. With 34 airports it barely matters performance-wise, but if this were hitting an API or searching thousands of records, firing on every keystroke would be wasteful and could cause flickering results.
 
-The component uses a **debounce** implemented with `setTimeout` inside a `useEffect` that depends on `inputValue`. Each time the input value changes, the previous timer is cleared (via the effect cleanup) and a new 250 ms timer starts. The actual `searchAirports()` call only fires once the user stops typing for 250 ms. This matters because filtering on every keystroke triggers unnecessary work on intermediate strings the user is still composing. With 34 airports the performance cost is negligible, but with a larger dataset or a remote API endpoint, unthrottled searches would cause wasted CPU cycles, redundant network requests, and potential race conditions where stale results arrive after newer ones.
+**How is the dropdown's keyboard navigation kept in sync with the mouse hover state?**
 
-### 2. How is the dropdown's keyboard navigation kept in sync with the mouse hover state?
+Both keyboard arrows and mouse hover update the same `activeIndex` state. When you hover an item, `onMouseEnter` sets `activeIndex` to that item's index. When you press Arrow Down/Up, it also updates `activeIndex`. So there's one source of truth — if you hover item 2 then press down arrow, you go to item 3. On mouse leave I reset the index to -1 so nothing stays highlighted after the cursor leaves.
 
-Both keyboard and mouse interactions update the same piece of state — `activeIndex` (via `setActiveIndex`). When the user hovers over a dropdown item, its `onMouseEnter` sets `activeIndex` to that item's index; `onMouseLeave` resets it to -1. Arrow Up / Arrow Down also update `activeIndex`. Because React re-renders from a single source of truth, the `.active` CSS class is always applied to exactly the item at `activeIndex`, regardless of whether the user got there with the keyboard or the mouse. If a user hovers item 3 and then presses Arrow Down, the highlight moves to item 4 — the two input methods stay perfectly in sync.
+**If we asked you to support 10,000 airports instead of 34, what ONE change would you make first?**
 
-### 3. If we asked you to support 10,000 airports instead of 34, what ONE change would you make first?
+I'd build a prefix map when the data loads — basically a Map where keys are prefixes of the city and code strings, and values are arrays of matching airports. That way instead of looping through all 10k entries on every search, I just look up the typed string in the map. It's more memory but the search becomes instant. If the dataset got really large I'd also consider moving the search server-side.
 
-I would build a **prefix index** (a Map keyed by lowercase prefixes of each code and city name) at load time, so that searches become O(k) lookups by prefix length rather than O(n) scans through the full list. Right now every search iterates all entries doing two `.includes()` calls per airport. At 10,000 entries this linear scan on every (debounced) keystroke would become noticeably slow. A pre-built prefix map or trie would give near-instant results regardless of dataset size. If the data grew large enough to slow down the initial fetch, I would also move the search to a server-side endpoint with pagination.
+## Known limitations
 
----
-
-## Known Limitations
-
-- **No ARIA live-region announcements.** Screen readers would benefit from an `aria-live` region that announces the result count and the currently highlighted option. I would add this with more time.
-- **Substring matching only.** Typing "del" matches "Delhi" but also any city containing "del". A smarter ranking (exact prefix → code match → substring) would improve result quality at scale.
-- **No loading spinner or error banner.** If `airports.json` fails to load, a plain text error is shown, but there is no retry button or styled error state.
-- **No blur-delay handling.** If the user tabs away mid-search, there is no explicit cleanup to prevent a brief flash of the dropdown. A short-delay blur handler would improve this.
+- I didn't add full accessibility (no aria-live announcements for screen readers)
+- The matching is basic substring — no ranking by relevance, so "del" might not show Delhi first if other cities also contain "del"
+- No retry if the JSON fails to load, just shows an error message
+- Could be cleaner with the blur/focus edge cases — if you tab away while typing the dropdown might flash briefly
