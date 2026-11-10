@@ -53,7 +53,7 @@ h1 {
   border-color: #4a90d9;
 }
 
-/* ── Dropdown ──────────────────────────────────────── */
+/* ── Dropdown  */
 .dropdown {
   position: absolute;
   top: 100%;
@@ -111,7 +111,7 @@ h1 {
   background: transparent;
 }
 
-/* ── Selected output ───────────────────────────────── */
+/* ── Selected output ─ */
 .selected-output {
   margin-top: 24px;
   padding: 16px;

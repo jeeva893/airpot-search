@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 
 /**
- * Custom hook: fetches the airport list once and returns a search function.
+
  *
  * @returns {{ airports: Array, isLoading: boolean, error: string|null, searchAirports: function }}
  */
@@ -42,10 +42,7 @@ export function useAirportLookup() {
     };
   }, []);
 
-  /**
-   * Search airports by IATA code or city name.
-   * Case-insensitive substring match.  Returns the first `limit` results.
-   */
+
   const searchAirports = useCallback(
     (term, limit = 5) => {
       const needle = term.trim().toLowerCase();
